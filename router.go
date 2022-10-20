@@ -65,6 +65,15 @@ type endpoint struct {
 
 type endpoints map[methodType]*endpoint
 
+func (s endpoints) Value(method methodType) *endpoint {
+	mh, ok := s[method]
+	if !ok {
+		mh = &endpoint{}
+		s[method] = mh
+	}
+	return mh
+}
+
 type nodes []*node
 
 // Sort the list of nodes by label
@@ -72,6 +81,39 @@ func (ns nodes) Sort()              { sort.Sort(ns); ns.tailSort() }
 func (ns nodes) Len() int           { return len(ns) }
 func (ns nodes) Swap(i, j int)      { ns[i], ns[j] = ns[j], ns[i] }
 func (ns nodes) Less(i, j int) bool { return ns[i].label < ns[j].label }
+
+// tailSort pushes nodes with '/' as the tail to the end of the list for param nodes.
+// The list order determines the traversal order.
+func (ns nodes) tailSort() {
+	for i := len(ns) - 1; i >= 0; i-- {
+		// param node label is {,
+		if ns[i].typ > ntStatic && ns[i].tail == '/' {
+			ns.Swap(i, len(ns)-1)
+			return
+		}
+	}
+}
+
+func (ns nodes) findEdge(label byte) *node {
+	// static nodes find
+	num := len(ns)
+	idx := 0
+	i, j := 0, num-1
+	for i <= j {
+		idx = i + (j-i)/2
+		if label > ns[idx].label {
+			i = idx + 1
+		} else if label < ns[idx].label {
+			j = idx - 1
+		} else {
+			i = num // breaks cond
+		}
+	}
+	if ns[idx].label != label {
+		return nil
+	}
+	return ns[idx]
+}
 
 // Represents node and edge in radix tree
 type node struct {
@@ -135,7 +177,7 @@ func (n *node) addChild(child *node, prefix string) *node {
 		// Search prefix is all static (that is, has no params in path)
 		// noop
 
-	case ntCatchAll:
+	// case ntCatchAll:
 
 	default:
 		// Search prefix contains a param, regexp or wildcard
@@ -196,21 +238,145 @@ func (n *node) addChild(child *node, prefix string) *node {
 		}
 	}
 
+	if child.typ == ntParam && len(n.children[child.typ]) >= 1 {
+		panic("param error")
+	}
+
 	n.children[child.typ] = append(n.children[child.typ], child)
 	n.children[child.typ].Sort()
 	return hn
 }
 
+func (n *node) replaceChild(label, tail byte, child *node) {
+	for i := 0; i < len(n.children[child.typ]); i++ {
+		if n.children[child.typ][i].label == label && n.children[child.typ][i].tail == tail {
+			n.children[child.typ][i] = child
+			n.children[child.typ][i].label = label
+			n.children[child.typ][i].tail = tail
+			return
+		}
+	}
+	panic("replacing missing child")
+}
+
 func (n *node) setEndpoint(method methodType, pattern string, handler http.Handler) {
+	// Set the handler for the method type on the node
+	if n.endpoints == nil {
+		n.endpoints = make(endpoints)
+	}
+
+	paramKeys := patParamKeys(pattern)
+	if method&mSTUB == mSTUB {
+		n.endpoints.Value(mSTUB).handler = handler
+	}
+	if method&mALL == mALL {
+		h := n.endpoints.Value(mALL)
+		h.handler = handler
+		h.pattern = pattern
+		h.paramKeys = paramKeys
+		for _, m := range methodMap {
+			h := n.endpoints.Value(m)
+			h.handler = handler
+			h.pattern = pattern
+			h.paramKeys = paramKeys
+		}
+	} else {
+		h := n.endpoints.Value(method)
+		h.handler = handler
+		h.pattern = pattern
+		h.paramKeys = paramKeys
+	}
+}
+
+func (n *node) find(method methodType, path string) *node {
+	nn := n
+	search := path
+
+	for t, nds := range nn.children {
+
+		if len(nds) == 0 {
+			continue
+		}
+
+		ntype := nodeType(t)
+
+		var xn *node
+		xsearch := search
+
+		label := search[0]
+
+		switch ntype {
+		case ntStatic:
+			xn = nds.findEdge(label)
+			if xn == nil || !strings.HasPrefix(xsearch, xn.prefix) {
+				continue
+			}
+			xsearch = xsearch[len(xn.prefix):]
+		case ntParam:
+			// short-circuit and return no matching route for empty param values
+			if xsearch == "" {
+				continue
+			}
+
+			xn = nds[0]
+			p := strings.IndexByte(xsearch, xn.tail)
+
+			if p < 0 {
+				if xn.tail == '/' {
+					// xsearch is param value
+					p = -1
+				} else {
+					continue
+				}
+			}
+
+			if strings.IndexByte(xsearch[:p], '/') != -1 {
+				// avoid a match across path segments
+				// IndexByte fast
+				continue
+			}
+
+			// TODO param value record
+
+			if (xn.tail == '/' && p == len(xsearch)-1) || p == -1 {
+				// xsearch is end and match the param check
+				if !xn.isLeaf() {
+					continue
+				}
+				h := xn.endpoints[method]
+				if h != nil && h.handler != nil {
+					// rctx.routeParams.Keys = append(rctx.routeParams.Keys, h.paramKeys...)
+					return xn
+				}
+
+				// flag that the routing context found a route, but not a corresponding
+				// supported method
+				// rctx.methodNotAllowed = true
+
+				// method not allow, continue check
+				continue
+			}
+
+			xsearch = xsearch[p:]
+
+		}
+
+	}
+
+	return nil
+}
+
+func (n *node) isLeaf() bool {
+	return n.endpoints != nil
 }
 
 type segment struct {
-	nodeType nodeType
 	key      string
 	rexpat   string
-	tail     byte
 	ps       int
 	pe       int
+	nodeType nodeType
+	tail     byte
 }
 
 func patNextSegment(pattern string) segment {
@@ -300,6 +466,40 @@ func patNextSegment(pattern string) segment {
 	}
 }
 
+func patParamKeys(pattern string) []string {
+	pat := pattern
+	paramKeys := []string{}
+	for {
+		seg := patNextSegment(pat)
+		if seg.nodeType == ntStatic {
+			return paramKeys
+		}
+		for i := 0; i < len(paramKeys); i++ {
+			if paramKeys[i] == seg.key {
+				panic(fmt.Sprintf("routing pattern '%s' contains duplicate param key, '%s'", pattern, seg.key))
+			}
+		}
+		paramKeys = append(paramKeys, seg.key)
+		pat = pat[seg.pe:]
+	}
+}
+
+// longestPrefix finds the length of the shared prefix
+// of two strings
+func longestPrefix(k1, k2 string) int {
+	max := len(k1)
+	if l := len(k2); l < max {
+		max = l
+	}
+	var i int
+	for i = 0; i < max; i++ {
+		if k1[i] != k2[i] {
+			break
+		}
+	}
+	return i
+}
+
 type ArtRouter struct {
 	root *node
 	size int
@@ -317,8 +517,12 @@ func (ar *ArtRouter) Insert(method methodType, pattern string, handler http.Hand
 		panic("param invalid")
 	}
 
-	var parent *node
 	search := pattern
+	if search[len(search)-1] == '/' {
+		search = search[:len(search)-1]
+	}
+
+	var parent *node
 	n := ar.root
 
 	for {
@@ -350,27 +554,44 @@ func (ar *ArtRouter) Insert(method methodType, pattern string, handler http.Hand
 			continue
 		}
 
-		//n.prefix compare
+		// n.prefix compare
 		commonPrefix := longestPrefix(search, n.prefix)
 
+		if commonPrefix == len(n.prefix) {
+			search = search[commonPrefix:]
+			continue
+		}
+
+		// split the node
+		child := &node{
+			typ:    ntStatic,
+			prefix: search[:commonPrefix],
+		}
+
+		parent.replaceChild(label, seg.tail, child)
+
+		n.label = n.prefix[commonPrefix]
+		n.prefix = n.prefix[commonPrefix:]
+		child.addChild(n, n.prefix)
+
+		search = search[commonPrefix:]
+		if len(search) == 0 {
+			child.setEndpoint(method, pattern, handler)
+			return child, nil
+		}
+
+		subChild := &node{
+			typ:    ntStatic,
+			label:  search[0],
+			prefix: search,
+		}
+
+		hn := child.addChild(subChild, search)
+		hn.setEndpoint(method, pattern, handler)
+		return hn, nil
 
 	}
-
-	return nil, nil
 }
 
-// longestPrefix finds the length of the shared prefix
-// of two strings
-func longestPrefix(k1, k2 string) int {
-	max := len(k1)
-	if l := len(k2); l < max {
-		max = l
-	}
-	var i int
-	for i = 0; i < max; i++ {
-		if k1[i] != k2[i] {
-			break
-		}
-	}
-	return i
+func (ar *ArtRouter) Find() {
 }
