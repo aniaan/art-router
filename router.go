@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strings"
 
-	"golang.org/x/text/cases"
 )
 
 // art-router implementation below is a based on the original work by
