@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+
+	"golang.org/x/text/cases"
 )
 
 // art-router implementation below is a based on the original work by
@@ -312,6 +314,27 @@ func (n *node) find(method methodType, path string) *node {
 				continue
 			}
 			xsearch = xsearch[len(xn.prefix):]
+
+			if len(xsearch) == 0 {
+				if !xn.isLeaf() {
+					continue
+				}
+
+				h := xn.endpoints[method]
+				if h == nil {
+					continue
+				}
+				// rctx.routeParams.Keys = append(rctx.routeParams.Keys, h.paramKeys...)
+				return xn
+			}
+
+			fin := xn.find(method, xsearch)
+			if fin != nil {
+				return fin
+			}
+
+			continue
+
 		case ntParam:
 			// short-circuit and return no matching route for empty param values
 			if xsearch == "" {
@@ -324,21 +347,19 @@ func (n *node) find(method methodType, path string) *node {
 			if p < 0 {
 				if xn.tail == '/' {
 					// xsearch is param value
-					p = -1
+					p = len(search)
 				} else {
 					continue
 				}
-			}
-
-			if strings.IndexByte(xsearch[:p], '/') != -1 {
+			} else if strings.IndexByte(xsearch[:p], '/') != -1 {
 				// avoid a match across path segments
-				// IndexByte fast
 				continue
 			}
 
 			// TODO param value record
+			xsearch = xsearch[p:]
 
-			if (xn.tail == '/' && p == len(xsearch)-1) || p == -1 {
+			if len(xsearch) == 0 {
 				// xsearch is end and match the param check
 				if !xn.isLeaf() {
 					continue
@@ -357,7 +378,76 @@ func (n *node) find(method methodType, path string) *node {
 				continue
 			}
 
-			xsearch = xsearch[p:]
+			fin := xn.find(method, xsearch)
+
+			if fin != nil {
+				return fin
+			}
+
+			continue
+
+		case ntRegexp:
+			if xsearch == "" {
+				continue
+			}
+
+			for idx := 0; idx < len(nds); idx++ {
+				xn = nds[idx]
+
+				p := strings.IndexByte(xsearch, xn.tail)
+
+				if p < 0 {
+					if xn.tail == '/' {
+						// xsearch is param value
+						p = len(search)
+					} else {
+						continue
+					}
+				} else if p == 0 {
+					continue
+				}
+
+				if !xn.rex.MatchString(xsearch[:p]) {
+					continue
+				}
+
+				xsearch = xsearch[p:]
+
+				if len(xsearch) == 0 {
+					if !xn.isLeaf() {
+						continue
+					}
+
+					h := xn.endpoints[method]
+					if h != nil && h.handler != nil {
+						// rctx.routeParams.Keys = append(rctx.routeParams.Keys, h.paramKeys...)
+						return xn
+					}
+					continue
+				}
+
+				fin := xn.find(method, xsearch)
+				if fin != nil {
+					return fin
+				}
+
+				xsearch = search
+
+			}
+
+		default:
+			xn = nn
+
+			if !xn.isLeaf() {
+				continue
+			}
+
+			h := xn.endpoints[method]
+			if h == nil {
+				continue
+			}
+			// rctx.routeParams.Keys = append(rctx.routeParams.Keys, h.paramKeys...)
+			return xn
 
 		}
 
@@ -500,6 +590,13 @@ func longestPrefix(k1, k2 string) int {
 	return i
 }
 
+func normalizePath(path string) string {
+	if path[len(path)-1] == '/' {
+		return path[:len(path)-1]
+	}
+	return path
+}
+
 type ArtRouter struct {
 	root *node
 	size int
@@ -517,10 +614,7 @@ func (ar *ArtRouter) Insert(method methodType, pattern string, handler http.Hand
 		panic("param invalid")
 	}
 
-	search := pattern
-	if search[len(search)-1] == '/' {
-		search = search[:len(search)-1]
-	}
+	search := normalizePath(pattern)
 
 	var parent *node
 	n := ar.root
