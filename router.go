@@ -2,18 +2,85 @@ package artrouter
 
 import (
 	"fmt"
+	"net"
 	"net/http"
+	"net/url"
 	"regexp"
 	"sort"
 	"strings"
-
 )
 
 // art-router implementation below is a based on the original work by
 // go-chi in https://github.com/go-chi/chi/blob/master/tree.go
 // (MIT licensed). It's been heavily modified for use as a HTTP router.
 
-type methodType uint
+type (
+	methodType uint
+	nodeType   uint8
+
+	// Represents leaf node in radix tree
+	route struct {
+		pattern        string
+		backend        string
+		headers        []*Header
+		queries        []*Query
+		paramKeys      []string
+		method         methodType
+		matchAllHeader bool
+	}
+
+	// Represents node and edge in radix tree
+	node struct {
+		// regexp matcher for regexp nodes
+		rex *regexp.Regexp
+
+		// HTTP handler endpoints on the leaf node
+		routes []*route
+
+		// prefix is the common prefix we ignore
+		prefix string
+
+		// child nodes should be stored in-order for iteration,
+		// in groups of the node type.
+		children [ntCatchAll + 1]nodes
+
+		// first byte of the child prefix
+		tail byte
+
+		// node type: static, regexp, param, catchAll
+		typ nodeType
+
+		// first byte of the prefix
+		label byte
+	}
+
+	nodes []*node
+
+	muxRule struct {
+		hostRE     *regexp.Regexp
+		root       *node
+		host       string
+		hostRegexp string
+	}
+
+	ArtRouter struct {
+		rules []*muxRule
+	}
+
+	routeParams struct {
+		Keys, Values []string
+	}
+
+	// Context is the default routing context
+	context struct {
+		headers     http.Header
+		queries     url.Values
+		route       *route
+		path        string
+		routeParams routeParams
+		method      methodType
+	}
+)
 
 const (
 	mSTUB methodType = 1 << iota
@@ -43,39 +110,12 @@ var methodMap = map[string]methodType{
 	http.MethodTrace:   mTRACE,
 }
 
-type nodeType uint8
-
 const (
 	ntStatic   nodeType = iota // /home
 	ntRegexp                   // /{id:[0-9]+}
 	ntParam                    // /{user}
 	ntCatchAll                 // /api/v1/*
 )
-
-// // Represents leaf node in radix tree
-type endpoint struct {
-	// endpoint handler
-	handler http.Handler
-
-	// pattern is the routing pattern for handler nodes
-	pattern string
-
-	// parameter keys recorded on handler nodes
-	paramKeys []string
-}
-
-type endpoints map[methodType]*endpoint
-
-func (s endpoints) Value(method methodType) *endpoint {
-	mh, ok := s[method]
-	if !ok {
-		mh = &endpoint{}
-		s[method] = mh
-	}
-	return mh
-}
-
-type nodes []*node
 
 // Sort the list of nodes by label
 func (ns nodes) Sort()              { sort.Sort(ns); ns.tailSort() }
@@ -114,31 +154,6 @@ func (ns nodes) findEdge(label byte) *node {
 		return nil
 	}
 	return ns[idx]
-}
-
-// Represents node and edge in radix tree
-type node struct {
-	// regexp matcher for regexp nodes
-	rex *regexp.Regexp
-
-	// HTTP handler endpoints on the leaf node
-	endpoints endpoints
-
-	// prefix is the common prefix we ignore
-	prefix string
-
-	// child nodes should be stored in-order for iteration,
-	// in groups of the node type.
-	children [ntCatchAll + 1]nodes
-
-	// first byte of the child prefix
-	tail byte
-
-	// node type: static, regexp, param, catchAll
-	typ nodeType
-
-	// first byte of the prefix
-	label byte
 }
 
 func (n *node) getEdge(ntyp nodeType, label, tail byte, rexpat string) *node {
@@ -260,368 +275,57 @@ func (n *node) replaceChild(label, tail byte, child *node) {
 	panic("replacing missing child")
 }
 
-func (n *node) setEndpoint(method methodType, pattern string, handler http.Handler) {
-	// Set the handler for the method type on the node
-	if n.endpoints == nil {
-		n.endpoints = make(endpoints)
+func (n *node) setRoute(path *Path) {
+	if n.routes == nil {
+		n.routes = make([]*route, 0)
 	}
 
-	paramKeys := patParamKeys(pattern)
-	if method&mSTUB == mSTUB {
-		n.endpoints.Value(mSTUB).handler = handler
-	}
-	if method&mALL == mALL {
-		h := n.endpoints.Value(mALL)
-		h.handler = handler
-		h.pattern = pattern
-		h.paramKeys = paramKeys
-		for _, m := range methodMap {
-			h := n.endpoints.Value(m)
-			h.handler = handler
-			h.pattern = pattern
-			h.paramKeys = paramKeys
+	paramKeys := patParamKeys(path.Path)
+
+	method := mALL
+	if len(path.Methods) != 0 {
+		method = 0
+		for _, m := range path.Methods {
+			method |= methodMap[m]
 		}
-	} else {
-		h := n.endpoints.Value(method)
-		h.handler = handler
-		h.pattern = pattern
-		h.paramKeys = paramKeys
 	}
+
+	for _, p := range path.Headers {
+		p.initHeaderRoute()
+	}
+
+	for _, q := range path.Queries {
+		q.initQueryRoute()
+	}
+
+	r := &route{
+		pattern:        path.Path,
+		backend:        path.Backend,
+		headers:        path.Headers,
+		queries:        path.Queries,
+		matchAllHeader: path.MatchAllHeader,
+		paramKeys:      paramKeys,
+		method:         method,
+	}
+
+	n.routes = append(n.routes, r)
 }
 
-func (n *node) find(method methodType, path string) *node {
-	nn := n
-	search := path
-
-	for t, nds := range nn.children {
-
-		if len(nds) == 0 {
-			continue
-		}
-
-		ntype := nodeType(t)
-
-		var xn *node
-		xsearch := search
-
-		label := search[0]
-
-		switch ntype {
-		case ntStatic:
-			xn = nds.findEdge(label)
-			if xn == nil || !strings.HasPrefix(xsearch, xn.prefix) {
-				continue
-			}
-			xsearch = xsearch[len(xn.prefix):]
-
-			if len(xsearch) == 0 {
-				if !xn.isLeaf() {
-					continue
-				}
-
-				h := xn.endpoints[method]
-				if h == nil {
-					continue
-				}
-				// rctx.routeParams.Keys = append(rctx.routeParams.Keys, h.paramKeys...)
-				return xn
-			}
-
-			fin := xn.find(method, xsearch)
-			if fin != nil {
-				return fin
-			}
-
-			continue
-
-		case ntParam:
-			// short-circuit and return no matching route for empty param values
-			if xsearch == "" {
-				continue
-			}
-
-			xn = nds[0]
-			p := strings.IndexByte(xsearch, xn.tail)
-
-			if p < 0 {
-				if xn.tail == '/' {
-					// xsearch is param value
-					p = len(search)
-				} else {
-					continue
-				}
-			} else if strings.IndexByte(xsearch[:p], '/') != -1 {
-				// avoid a match across path segments
-				continue
-			}
-
-			// TODO param value record
-			xsearch = xsearch[p:]
-
-			if len(xsearch) == 0 {
-				// xsearch is end and match the param check
-				if !xn.isLeaf() {
-					continue
-				}
-				h := xn.endpoints[method]
-				if h != nil && h.handler != nil {
-					// rctx.routeParams.Keys = append(rctx.routeParams.Keys, h.paramKeys...)
-					return xn
-				}
-
-				// flag that the routing context found a route, but not a corresponding
-				// supported method
-				// rctx.methodNotAllowed = true
-
-				// method not allow, continue check
-				continue
-			}
-
-			fin := xn.find(method, xsearch)
-
-			if fin != nil {
-				return fin
-			}
-
-			continue
-
-		case ntRegexp:
-			if xsearch == "" {
-				continue
-			}
-
-			for idx := 0; idx < len(nds); idx++ {
-				xn = nds[idx]
-
-				p := strings.IndexByte(xsearch, xn.tail)
-
-				if p < 0 {
-					if xn.tail == '/' {
-						// xsearch is param value
-						p = len(search)
-					} else {
-						continue
-					}
-				} else if p == 0 {
-					continue
-				}
-
-				if !xn.rex.MatchString(xsearch[:p]) {
-					continue
-				}
-
-				xsearch = xsearch[p:]
-
-				if len(xsearch) == 0 {
-					if !xn.isLeaf() {
-						continue
-					}
-
-					h := xn.endpoints[method]
-					if h != nil && h.handler != nil {
-						// rctx.routeParams.Keys = append(rctx.routeParams.Keys, h.paramKeys...)
-						return xn
-					}
-					continue
-				}
-
-				fin := xn.find(method, xsearch)
-				if fin != nil {
-					return fin
-				}
-
-				xsearch = search
-
-			}
-
-		default:
-			xn = nn
-
-			if !xn.isLeaf() {
-				continue
-			}
-
-			h := xn.endpoints[method]
-			if h == nil {
-				continue
-			}
-			// rctx.routeParams.Keys = append(rctx.routeParams.Keys, h.paramKeys...)
-			return xn
-
-		}
-
-	}
-
-	return nil
-}
-
-func (n *node) isLeaf() bool {
-	return n.endpoints != nil
-}
-
-type segment struct {
-	key      string
-	rexpat   string
-	ps       int
-	pe       int
-	nodeType nodeType
-	tail     byte
-}
-
-func patNextSegment(pattern string) segment {
-	ps := strings.Index(pattern, "{")
-	ws := strings.Index(pattern, "*")
-
-	if ps < 0 && ws < 0 {
-		// we return the entire thing
-		return segment{
-			nodeType: ntStatic,
-			pe:       len(pattern),
-		}
-	}
-
-	// Sanity check
-	if ps >= 0 && ws >= 0 && ws < ps {
-		panic("wildcard '*' must be the last pattern in a route, otherwise use a '{param}'")
-	}
-
-	// Wildcard pattern as finale
-	if ws < len(pattern)-1 {
-		panic("wildcard '*' must be the last value in a route. trim trailing text or use a '{param}' instead")
-	}
-
-	// ws >0 && ps < 0
-	if ps < 0 {
-		return segment{
-			nodeType: ntCatchAll,
-			key:      "*",
-			ps:       ws,
-			pe:       len(pattern),
-		}
-	}
-
-	var tail byte = '/' // Default endpoint tail to / byte
-	// Param/Regexp pattern is next
-	nt := ntParam
-
-	// Read to closing } taking into account opens and closes in curl count (cc)
-	cc := 0
-	pe := ps
-	for i, c := range pattern[ps:] {
-		if c == '{' {
-			cc++
-		} else if c == '}' {
-			cc--
-			if cc == 0 {
-				pe = ps + i
-				break
-			}
-		}
-	}
-	if pe == ps {
-		panic("route param closing delimiter '}' is missing")
-	}
-
-	key := pattern[ps+1 : pe]
-	pe++ // set end to next position
-
-	if pe < len(pattern) {
-		tail = pattern[pe]
-	}
-
-	var rexpat string
-	if idx := strings.Index(key, ":"); idx >= 0 {
-		nt = ntRegexp
-		rexpat = key[idx+1:]
-		key = key[:idx]
-	}
-
-	if len(rexpat) > 0 {
-		if rexpat[0] != '^' {
-			rexpat = "^" + rexpat
-		}
-		if rexpat[len(rexpat)-1] != '$' {
-			rexpat += "$"
-		}
-	}
-
-	return segment{
-		nodeType: nt,
-		key:      key,
-		rexpat:   rexpat,
-		tail:     tail,
-		ps:       ps,
-		pe:       pe,
-	}
-}
-
-func patParamKeys(pattern string) []string {
-	pat := pattern
-	paramKeys := []string{}
-	for {
-		seg := patNextSegment(pat)
-		if seg.nodeType == ntStatic {
-			return paramKeys
-		}
-		for i := 0; i < len(paramKeys); i++ {
-			if paramKeys[i] == seg.key {
-				panic(fmt.Sprintf("routing pattern '%s' contains duplicate param key, '%s'", pattern, seg.key))
-			}
-		}
-		paramKeys = append(paramKeys, seg.key)
-		pat = pat[seg.pe:]
-	}
-}
-
-// longestPrefix finds the length of the shared prefix
-// of two strings
-func longestPrefix(k1, k2 string) int {
-	max := len(k1)
-	if l := len(k2); l < max {
-		max = l
-	}
-	var i int
-	for i = 0; i < max; i++ {
-		if k1[i] != k2[i] {
-			break
-		}
-	}
-	return i
-}
-
-func normalizePath(path string) string {
-	if path[len(path)-1] == '/' {
-		return path[:len(path)-1]
-	}
-	return path
-}
-
-type ArtRouter struct {
-	root *node
-	size int
-}
-
-func New() ArtRouter {
-	return ArtRouter{
-		root: &node{},
-	}
-}
-
-func (ar *ArtRouter) Insert(method methodType, pattern string, handler http.Handler) (*node, error) {
-	// valid param method != 0 && pattern != "" && handler != nil
-	if method == 0 || pattern == "" || handler == nil {
+func (root *node) insert(path *Path) (*node, error) {
+	if path == nil {
 		panic("param invalid")
 	}
 
-	search := normalizePath(pattern)
+	// search := normalizePath(path.Path)
+	search := path.Path
 
 	var parent *node
-	n := ar.root
+	n := root
 
 	for {
 
 		if len(search) == 0 {
-			n.setEndpoint(method, pattern, handler)
+			n.setRoute(path)
 			return n, nil
 		}
 
@@ -638,7 +342,7 @@ func (ar *ArtRouter) Insert(method methodType, pattern string, handler http.Hand
 		if n == nil {
 			child := &node{label: label, tail: seg.tail, prefix: search}
 			hn := parent.addChild(child, search)
-			hn.setEndpoint(method, pattern, handler)
+			hn.setRoute(path)
 			return hn, nil
 		}
 
@@ -669,7 +373,7 @@ func (ar *ArtRouter) Insert(method methodType, pattern string, handler http.Hand
 
 		search = search[commonPrefix:]
 		if len(search) == 0 {
-			child.setEndpoint(method, pattern, handler)
+			child.setRoute(path)
 			return child, nil
 		}
 
@@ -680,11 +384,329 @@ func (ar *ArtRouter) Insert(method methodType, pattern string, handler http.Hand
 		}
 
 		hn := child.addChild(subChild, search)
-		hn.setEndpoint(method, pattern, handler)
+		hn.setRoute(path)
 		return hn, nil
 
 	}
 }
 
-func (ar *ArtRouter) Find() {
+func (n *node) match(context *context) *route {
+	for _, r := range n.routes {
+		if r.match(context) {
+			return r
+		}
+	}
+
+	return nil
+}
+
+func (n *node) find(path string, context *context) *route {
+	nn := n
+	search := path
+
+	// if len(search) == 0 {
+	// 	return n.match(context)
+	// }
+
+	for t, nds := range nn.children {
+
+		if len(nds) == 0 {
+			continue
+		}
+
+		ntype := nodeType(t)
+
+		var xn *node
+		xsearch := search
+
+		var label byte
+
+		if search != "" {
+			label = search[0]
+		}
+
+		switch ntype {
+		case ntStatic:
+
+			if xsearch == "" {
+				continue
+			}
+
+			xn = nds.findEdge(label)
+			if xn == nil || !strings.HasPrefix(xsearch, xn.prefix) {
+				continue
+			}
+			xsearch = xsearch[len(xn.prefix):]
+
+			if len(xsearch) == 0 {
+				if xn.isLeaf() {
+					r := xn.match(context)
+					if r != nil {
+						return r
+					}
+				}
+			}
+			fin := xn.find(xsearch, context)
+			if fin != nil {
+				return fin
+			}
+
+		case ntParam:
+			// short-circuit and return no matching route for empty param values
+			if xsearch == "" {
+				continue
+			}
+
+			xn = nds[0]
+			p := strings.IndexByte(xsearch, xn.tail)
+
+			if p < 0 {
+				if xn.tail == '/' {
+					// xsearch is param value
+					p = len(search)
+				} else {
+					continue
+				}
+			} else if strings.IndexByte(xsearch[:p], '/') != -1 {
+				// avoid a match across path segments
+				continue
+			}
+
+			prevlen := len(context.routeParams.Values)
+			context.routeParams.Values = append(context.routeParams.Values, xsearch[:p])
+			xsearch = xsearch[p:]
+
+			if len(xsearch) == 0 {
+				if xn.isLeaf() {
+					r := xn.match(context)
+					if r != nil {
+						context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
+						return r
+					}
+				}
+			}
+			fin := xn.find(xsearch, context)
+			if fin != nil {
+				return fin
+			}
+
+			context.routeParams.Values = context.routeParams.Values[:prevlen]
+
+		case ntRegexp:
+			if xsearch == "" {
+				continue
+			}
+
+			for idx := 0; idx < len(nds); idx++ {
+				xn = nds[idx]
+
+				p := strings.IndexByte(xsearch, xn.tail)
+
+				if p < 0 {
+					if xn.tail == '/' {
+						// xsearch is param value
+						p = len(search)
+					} else {
+						continue
+					}
+				} else if p == 0 {
+					continue
+				}
+
+				if !xn.rex.MatchString(xsearch[:p]) {
+					continue
+				}
+
+				prevlen := len(context.routeParams.Values)
+				context.routeParams.Values = append(context.routeParams.Values, xsearch[:p])
+				xsearch = xsearch[p:]
+
+				if len(xsearch) == 0 {
+					if xn.isLeaf() {
+						r := xn.match(context)
+						if r != nil {
+							context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
+							return r
+						}
+					}
+				}
+				fin := xn.find(xsearch, context)
+				if fin != nil {
+					return fin
+				}
+				context.routeParams.Values = context.routeParams.Values[:prevlen]
+				xsearch = search
+			}
+
+		default:
+			xn = nds[0]
+			r := xn.match(context)
+			if r != nil {
+				return r
+			}
+		}
+
+	}
+
+	return nil
+}
+
+func (n *node) isLeaf() bool {
+	return n.routes != nil
+}
+
+func (r *route) match(context *context) bool {
+	// method match
+	if context.method|r.method == 0 {
+		return false
+	}
+
+	if len(r.headers) > 0 && !r.matchHeaders(context.headers) {
+		return false
+	}
+
+	if len(r.queries) > 0 && !r.matchQueries(context.queries) {
+		return false
+	}
+
+	return true
+}
+
+func (r *route) matchHeaders(headers http.Header) bool {
+	if len(r.headers) == 0 {
+		return true
+	}
+
+	if r.matchAllHeader {
+		for _, h := range r.headers {
+			v := headers.Get(h.Key)
+			if len(h.Values) > 0 && !StrInSlice(v, h.Values) {
+				return false
+			}
+
+			if h.Regexp != "" && !h.headerRE.MatchString(v) {
+				return false
+			}
+		}
+	} else {
+		for _, h := range r.headers {
+			v := headers.Get(h.Key)
+			if StrInSlice(v, h.Values) {
+				return true
+			}
+
+			if h.Regexp != "" && h.headerRE.MatchString(v) {
+				return true
+			}
+		}
+	}
+
+	return r.matchAllHeader
+}
+
+func (r *route) matchQueries(query url.Values) bool {
+	if len(r.queries) == 0 {
+		return true
+	}
+
+	for _, q := range r.queries {
+		v := query.Get(q.Key)
+		if len(q.Values) > 0 && !StrInSlice(v, q.Values) {
+			return false
+		}
+
+		if q.Regexp != "" && !q.re.MatchString(v) {
+			return false
+		}
+	}
+
+	return true
+}
+
+func newMuxRule(rule *Rule) *muxRule {
+	var hostRE *regexp.Regexp
+
+	if rule.HostRegexp != "" {
+		var err error
+		hostRE, err = regexp.Compile(rule.HostRegexp)
+		// defensive programming
+		if err != nil {
+			panic(fmt.Sprintf("BUG: compile %s failed: %v", rule.HostRegexp, err))
+		}
+	}
+
+	root := &node{}
+	for _, path := range rule.Paths {
+		_, err := root.insert(path)
+		if err != nil {
+			panic(err)
+		}
+	}
+
+	return &muxRule{
+		host:       rule.Host,
+		hostRegexp: rule.HostRegexp,
+		hostRE:     hostRE,
+		root:       root,
+	}
+}
+
+func (mr *muxRule) match(host string) bool {
+	if mr.host == "" && mr.hostRE == nil {
+		return true
+	}
+
+	if mr.host != "" && mr.host == host {
+		return true
+	}
+	if mr.hostRE != nil && mr.hostRE.MatchString(host) {
+		return true
+	}
+
+	return false
+}
+
+func New(rules []*Rule) ArtRouter {
+	router := ArtRouter{
+		rules: make([]*muxRule, 0),
+	}
+
+	for _, rule := range rules {
+		mr := newMuxRule(rule)
+		router.rules = append(router.rules, mr)
+
+	}
+
+	return router
+}
+
+func (ar *ArtRouter) Search(req *http.Request) *context {
+	host := req.Host
+	if h, _, err := net.SplitHostPort(host); err == nil {
+		host = h
+	}
+	method := methodMap[req.Method]
+	// path := normalizePath(req.URL.Path)
+	path := req.URL.Path
+
+	context := &context{
+		method:  method,
+		path:    path,
+		headers: req.Header,
+		queries: req.URL.Query(),
+	}
+
+	for _, rule := range ar.rules {
+		if !rule.match(host) {
+			continue
+		}
+		route := rule.root.find(path, context)
+
+		if route != nil {
+			context.route = route
+			return context
+		}
+	}
+
+	return context
 }
