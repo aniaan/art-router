@@ -249,6 +249,7 @@ func (n *node) addChild(child *node, prefix string) *node {
 				typ:   segType,
 				label: search[0],
 				tail:  seg.tail,
+				prefix: search,
 			}
 			hn = child.addChild(nn, search)
 		}
