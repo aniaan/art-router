@@ -228,41 +228,41 @@ func TestTree(t *testing.T) {
 		k []string // output param keys
 		v []string // output param values
 	}{
-		//{r: "/", h: hIndex, k: []string{}, v: []string{}},
-		//{r: "/favicon.ico", h: hFavicon, k: []string{}, v: []string{}},
-		//
-		//{r: "/pages", h: "", k: []string{}, v: []string{}},
-		//{r: "/pages/", h: hStub, k: []string{"*"}, v: []string{""}},
-		//{r: "/pages/yes", h: hStub, k: []string{"*"}, v: []string{"yes"}},
-		//
-		//{r: "/article", h: hArticleList, k: []string{}, v: []string{}},
-		//{r: "/article/", h: hArticleList, k: []string{}, v: []string{}},
-		//{r: "/article/near", h: hArticleNear, k: []string{}, v: []string{}},
-		{r: "/article/neard", h: hArticleShow, k: []string{"id"}, v: []string{"neard"}},
-		//{r: "/article/123", h: hArticleShow, k: []string{"id"}, v: []string{"123"}},
-		//{r: "/article/123/456", h: hArticleShowOpts, k: []string{"id", "opts"}, v: []string{"123", "456"}},
-		//{r: "/article/@peter", h: hArticleByUser, k: []string{"user"}, v: []string{"peter"}},
-		//{r: "/article/22//related", h: hArticleShowRelated, k: []string{"id"}, v: []string{"22"}},
-		//{r: "/article/111/edit", h: hStub, k: []string{"iffd"}, v: []string{"111"}},
-		//{r: "/article/slug/sept/-/4/2015", h: hArticleSlug, k: []string{"month", "day", "year"}, v: []string{"sept", "4", "2015"}},
-		//{r: "/article/:id", h: hArticleShow, k: []string{"id"}, v: []string{":id"}},
+		{r: "/", h: hIndex, k: []string{}, v: []string{}},
+		{r: "/favicon.ico", h: hFavicon, k: []string{}, v: []string{}},
 
-		//{r: "/admin/user", h: hUserList, k: []string{}, v: []string{}},
-		//{r: "/admin/user/", h: hUserList, k: []string{}, v: []string{}},
-		//{r: "/admin/user/1", h: hUserShow, k: []string{"id"}, v: []string{"1"}},
-		//{r: "/admin/user//1", h: hUserShow, k: []string{"id"}, v: []string{"1"}},
-		//{r: "/admin/hi", h: hAdminCatchall, k: []string{"*"}, v: []string{"hi"}},
-		//{r: "/admin/lots/of/:fun", h: hAdminCatchall, k: []string{"*"}, v: []string{"lots/of/:fun"}},
-		//{r: "/admin/apps/333", h: hAdminAppShow, k: []string{"id"}, v: []string{"333"}},
-		//{r: "/admin/apps/333/woot", h: hAdminAppShowCatchall, k: []string{"id", "*"}, v: []string{"333", "woot"}},
-		//
-		//{r: "/hubs/123/view", h: hHubView1, k: []string{"hubID"}, v: []string{"123"}},
-		//{r: "/hubs/123/view/index.html", h: hHubView2, k: []string{"hubID", "*"}, v: []string{"123", "index.html"}},
-		//{r: "/hubs/123/users", h: hHubView3, k: []string{"hubID"}, v: []string{"123"}},
-		//
-		//{r: "/users/123/profile", h: hUserProfile, k: []string{"userID"}, v: []string{"123"}},
-		//{r: "/users/super/123/okay/yes", h: hUserSuper, k: []string{"*"}, v: []string{"123/okay/yes"}},
-		//{r: "/users/123/okay/yes", h: hUserAll, k: []string{"*"}, v: []string{"123/okay/yes"}},
+		{r: "/pages", h: "", k: []string{}, v: []string{}},
+		{r: "/pages/", h: hStub, k: []string{"*"}, v: []string{""}},
+		{r: "/pages/yes", h: hStub, k: []string{"*"}, v: []string{"yes"}},
+
+		{r: "/article", h: hArticleList, k: []string{}, v: []string{}},
+		{r: "/article/", h: hArticleList, k: []string{}, v: []string{}},
+		{r: "/article/near", h: hArticleNear, k: []string{}, v: []string{}},
+		{r: "/article/neard", h: hStub, k: []string{"id"}, v: []string{"neard"}},
+		{r: "/article/123", h: hStub, k: []string{"id"}, v: []string{"123"}},
+		{r: "/article/123/456", h: hArticleShowOpts, k: []string{"id", "opts"}, v: []string{"123", "456"}},
+		{r: "/article/@peter", h: hArticleByUser, k: []string{"user"}, v: []string{"peter"}},
+		{r: "/article/22//related", h: hArticleShowRelated, k: []string{"id"}, v: []string{"22"}},
+		{r: "/article/111/edit", h: hStub, k: []string{"iffd"}, v: []string{"111"}},
+		{r: "/article/slug/sept/-/4/2015", h: hArticleSlug, k: []string{"month", "day", "year"}, v: []string{"sept", "4", "2015"}},
+		{r: "/article/:id", h: hStub, k: []string{"id"}, v: []string{":id"}},
+
+		{r: "/admin/user", h: hUserList, k: []string{}, v: []string{}},
+		{r: "/admin/user/", h: hStub, k: []string{}, v: []string{}},
+		{r: "/admin/user/1", h: hUserShow, k: []string{"id"}, v: []string{"1"}},
+		{r: "/admin/user//1", h: hUserShow, k: []string{"id"}, v: []string{"1"}},
+		{r: "/admin/hi", h: hStub, k: []string{"*"}, v: []string{"hi"}},
+		{r: "/admin/lots/of/:fun", h: hStub, k: []string{"*"}, v: []string{"lots/of/:fun"}},
+		{r: "/admin/apps/333", h: hAdminAppShow, k: []string{"id"}, v: []string{"333"}},
+		{r: "/admin/apps/333/woot", h: hAdminAppShowCatchall, k: []string{"id", "*"}, v: []string{"333", "woot"}},
+
+		{r: "/hubs/123/view", h: hHubView1, k: []string{"hubID"}, v: []string{"123"}},
+		{r: "/hubs/123/view/index.html", h: hHubView2, k: []string{"hubID", "*"}, v: []string{"123", "index.html"}},
+		{r: "/hubs/123/users", h: hHubView3, k: []string{"hubID"}, v: []string{"123"}},
+
+		{r: "/users/123/profile", h: hUserProfile, k: []string{"userID"}, v: []string{"123"}},
+		{r: "/users/super/123/okay/yes", h: hUserSuper, k: []string{"*"}, v: []string{"123/okay/yes"}},
+		{r: "/users/123/okay/yes", h: hUserAll, k: []string{"*"}, v: []string{"123/okay/yes"}},
 	}
 
 	// log.Println("~~~~~~~~~")
