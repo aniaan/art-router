@@ -255,9 +255,9 @@ func (n *node) addChild(child *node, prefix string) *node {
 		}
 	}
 
-	if child.typ == ntParam && len(n.children[child.typ]) >= 1 {
-		panic("param error")
-	}
+	// if child.typ == ntParam && len(n.children[child.typ]) >= 1 {
+	// 	panic("param error")
+	// }
 
 	n.children[child.typ] = append(n.children[child.typ], child)
 	n.children[child.typ].Sort()
@@ -405,10 +405,6 @@ func (n *node) find(path string, context *context) *route {
 	nn := n
 	search := path
 
-	// if len(search) == 0 {
-	// 	return n.match(context)
-	// }
-
 	for t, nds := range nn.children {
 
 		if len(nds) == 0 {
@@ -454,49 +450,7 @@ func (n *node) find(path string, context *context) *route {
 				return fin
 			}
 
-		case ntParam:
-			// short-circuit and return no matching route for empty param values
-			if xsearch == "" {
-				continue
-			}
-
-			xn = nds[0]
-			p := strings.IndexByte(xsearch, xn.tail)
-
-			if p < 0 {
-				if xn.tail == '/' {
-					// xsearch is param value
-					p = len(search)
-				} else {
-					continue
-				}
-			} else if strings.IndexByte(xsearch[:p], '/') != -1 {
-				// avoid a match across path segments
-				continue
-			}
-
-			prevlen := len(context.routeParams.Values)
-			context.routeParams.Values = append(context.routeParams.Values, xsearch[:p])
-			xsearch = xsearch[p:]
-
-			if len(xsearch) == 0 {
-				if xn.isLeaf() {
-					r := xn.match(context)
-					if r != nil {
-						// context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
-						return r
-					}
-				}
-			}
-			fin := xn.find(xsearch, context)
-			if fin != nil {
-				// context.routeParams.Keys = append(context.routeParams.Keys, fin.paramKeys...)
-				return fin
-			}
-
-			context.routeParams.Values = context.routeParams.Values[:prevlen]
-
-		case ntRegexp:
+		case ntParam, ntRegexp:
 			if xsearch == "" {
 				continue
 			}
@@ -513,11 +467,15 @@ func (n *node) find(path string, context *context) *route {
 					} else {
 						continue
 					}
-				} else if p == 0 {
+				} else if ntype == ntRegexp && p == 0 {
 					continue
 				}
 
-				if !xn.rex.MatchString(xsearch[:p]) {
+				if ntype == ntRegexp {
+					if !xn.rex.MatchString(xsearch[:p]) {
+						continue
+					}
+				} else if strings.IndexByte(xsearch[:p], '/') != -1 {
 					continue
 				}
 
@@ -529,14 +487,12 @@ func (n *node) find(path string, context *context) *route {
 					if xn.isLeaf() {
 						r := xn.match(context)
 						if r != nil {
-							// context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
 							return r
 						}
 					}
 				}
 				fin := xn.find(xsearch, context)
 				if fin != nil {
-					// context.routeParams.Keys = append(context.routeParams.Keys, fin.paramKeys...)
 					return fin
 				}
 				context.routeParams.Values = context.routeParams.Values[:prevlen]
@@ -548,7 +504,6 @@ func (n *node) find(path string, context *context) *route {
 			r := xn.match(context)
 			if r != nil {
 				context.routeParams.Values = append(context.routeParams.Values, xsearch)
-				// context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
 				return r
 			}
 		}
@@ -564,7 +519,7 @@ func (n *node) isLeaf() bool {
 
 func (r *route) match(context *context) bool {
 	// method match
-	if context.method|r.method == 0 {
+	if context.method&r.method == 0 {
 		return false
 	}
 
