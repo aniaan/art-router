@@ -1,7 +1,6 @@
-package artrouter
+package router
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -222,8 +221,6 @@ func TestTree(t *testing.T) {
 		},
 	}
 
-
-
 	tests := []struct {
 		r string   // input request path
 		h string   // output matched handler
@@ -277,8 +274,8 @@ func TestTree(t *testing.T) {
 
 		var backend string
 
-		if context.route != nil {
-			backend = context.route.backend
+		if context.Route != nil {
+			backend = context.Route.backend
 		}
 
 		assert.Equal(tt.h, backend)
@@ -487,8 +484,8 @@ func TestTreeMoar(t *testing.T) {
 
 		var backend string
 
-		if context.route != nil {
-			backend = context.route.backend
+		if context.Route != nil {
+			backend = context.Route.backend
 		}
 
 		assert.Equal(tt.h, backend)
@@ -591,8 +588,8 @@ func TestTreeRegexp(t *testing.T) {
 
 		var backend string
 
-		if context.route != nil {
-			backend = context.route.backend
+		if context.Route != nil {
+			backend = context.Route.backend
 		}
 
 		assert.Equal(tt.h, backend)
@@ -649,8 +646,8 @@ func TestTreeRegexpRecursive(t *testing.T) {
 
 		var backend string
 
-		if context.route != nil {
-			backend = context.route.backend
+		if context.Route != nil {
+			backend = context.Route.backend
 		}
 
 		assert.Equal(tt.h, backend)
@@ -714,17 +711,14 @@ func TestTreeRegexMatchWholeParam(t *testing.T) {
 
 		var backend string
 
-		if context.route != nil {
-			backend = context.route.backend
+		if context.Route != nil {
+			backend = context.Route.backend
 		}
 
 		assert.Equal(tt.expectedHandler, backend)
 
 	}
-
 }
-
-
 
 func BenchmarkTreeGet(b *testing.B) {
 	h1 := "h1"
@@ -793,33 +787,4 @@ func BenchmarkTreeGet(b *testing.B) {
 		req, _ := http.NewRequest(http.MethodGet, "/ping/123/456", nil)
 		router.Search(req)
 	}
-}
-
-
-func debugPrintTree(parent int, i int, n *node, label byte) bool {
-	numEdges := 0
-	for _, nds := range n.children {
-		numEdges += len(nds)
-	}
-
-	// if n.handlers != nil {
-	// 	log.Printf("[node %d parent:%d] typ:%d prefix:%s label:%s tail:%s numEdges:%d isLeaf:%v handler:%v pat:%s keys:%v\n", i, parent, n.typ, n.prefix, string(label), string(n.tail), numEdges, n.isLeaf(), n.handlers, n.pattern, n.paramKeys)
-	// } else {
-	// 	log.Printf("[node %d parent:%d] typ:%d prefix:%s label:%s tail:%s numEdges:%d isLeaf:%v pat:%s keys:%v\n", i, parent, n.typ, n.prefix, string(label), string(n.tail), numEdges, n.isLeaf(), n.pattern, n.paramKeys)
-	// }
-	if n.routes != nil {
-		fmt.Printf("[node %d parent:%d] typ:%d prefix:%s label:%s tail:%s numEdges:%d isLeaf:%v handler:%v\n", i, parent, n.typ, n.prefix, string(label), string(n.tail), numEdges, n.isLeaf(), n.routes)
-	} else {
-		fmt.Printf("[node %d parent:%d] typ:%d prefix:%s label:%s tail:%s numEdges:%d isLeaf:%v\n", i, parent, n.typ, n.prefix, string(label), string(n.tail), numEdges, n.isLeaf())
-	}
-	parent = i
-	for _, nds := range n.children {
-		for _, e := range nds {
-			i++
-			if debugPrintTree(parent, i, e, e.label) {
-				return true
-			}
-		}
-	}
-	return false
 }

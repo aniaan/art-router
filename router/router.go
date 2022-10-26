@@ -1,4 +1,4 @@
-package artrouter
+package router
 
 import (
 	"fmt"
@@ -19,7 +19,7 @@ type (
 	nodeType   uint8
 
 	// Represents leaf node in radix tree
-	route struct {
+	Route struct {
 		pattern        string
 		backend        string
 		headers        []*Header
@@ -35,7 +35,7 @@ type (
 		rex *regexp.Regexp
 
 		// HTTP handler endpoints on the leaf node
-		routes []*route
+		routes []*Route
 
 		// prefix is the common prefix we ignore
 		prefix string
@@ -71,11 +71,11 @@ type (
 		Keys, Values []string
 	}
 
-	// Context is the default routing context
-	context struct {
+	// Context is the default routing Context
+	Context struct {
 		headers     http.Header
 		queries     url.Values
-		route       *route
+		Route       *Route
 		path        string
 		routeParams routeParams
 		method      methodType
@@ -278,7 +278,7 @@ func (n *node) replaceChild(label, tail byte, child *node) {
 
 func (n *node) setRoute(path *Path) {
 	if n.routes == nil {
-		n.routes = make([]*route, 0)
+		n.routes = make([]*Route, 0)
 	}
 
 	paramKeys := patParamKeys(path.Path)
@@ -299,7 +299,7 @@ func (n *node) setRoute(path *Path) {
 		q.initQueryRoute()
 	}
 
-	r := &route{
+	r := &Route{
 		pattern:        path.Path,
 		backend:        path.Backend,
 		headers:        path.Headers,
@@ -391,7 +391,7 @@ func (root *node) insert(path *Path) (*node, error) {
 	}
 }
 
-func (n *node) match(context *context) *route {
+func (n *node) match(context *Context) *Route {
 	for _, r := range n.routes {
 		if r.match(context) {
 			return r
@@ -401,7 +401,7 @@ func (n *node) match(context *context) *route {
 	return nil
 }
 
-func (n *node) find(path string, context *context) *route {
+func (n *node) find(path string, context *Context) *Route {
 	nn := n
 	search := path
 
@@ -517,7 +517,7 @@ func (n *node) isLeaf() bool {
 	return n.routes != nil
 }
 
-func (r *route) match(context *context) bool {
+func (r *Route) match(context *Context) bool {
 	// method match
 	if context.method&r.method == 0 {
 		return false
@@ -534,7 +534,7 @@ func (r *route) match(context *context) bool {
 	return true
 }
 
-func (r *route) matchHeaders(headers http.Header) bool {
+func (r *Route) matchHeaders(headers http.Header) bool {
 	if len(r.headers) == 0 {
 		return true
 	}
@@ -566,7 +566,7 @@ func (r *route) matchHeaders(headers http.Header) bool {
 	return r.matchAllHeader
 }
 
-func (r *route) matchQueries(query url.Values) bool {
+func (r *Route) matchQueries(query url.Values) bool {
 	if len(r.queries) == 0 {
 		return true
 	}
@@ -642,7 +642,7 @@ func New(rules []*Rule) ArtRouter {
 	return router
 }
 
-func (ar *ArtRouter) Search(req *http.Request) *context {
+func (ar *ArtRouter) Search(req *http.Request) *Context {
 	host := req.Host
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
@@ -651,7 +651,7 @@ func (ar *ArtRouter) Search(req *http.Request) *context {
 	// path := normalizePath(req.URL.Path)
 	path := req.URL.Path
 
-	context := &context{
+	context := &Context{
 		method:  method,
 		path:    path,
 		headers: req.Header,
@@ -665,7 +665,7 @@ func (ar *ArtRouter) Search(req *http.Request) *context {
 		route := rule.root.find(path, context)
 
 		if route != nil {
-			context.route = route
+			context.Route = route
 			context.routeParams.Keys = append(context.routeParams.Keys, route.paramKeys...)
 			return context
 		}
