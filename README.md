@@ -17,6 +17,8 @@ QPS        : 385801.564169
 
 ### match-static
 
+>> 相比lua-resty-radixtree的性能，主要耗时在net.splitHost和url.Query()上，lua-resty-radixtree的benchmark参数host和query是提前预置好的，所以qps会高,如果把net.splitHost和url.Query()也做成固定值，qps可以做到1300w
+
 ```shell
 $ go build benchmark/matchstatic/matchstatic.go && ./matchstatic
 
@@ -25,7 +27,6 @@ route count: 100000
 match times: 10000000
 time used  : 1.612419   sec
 QPS        : 6201861.876831
-> 相比lua-resty-radixtree的性能，主要耗时在net.splitHost和url.Query()上，lua-resty-radixtree的benchmark参数host和query是提前预置好的，所以qps会高,如果把net.splitHost和url.Query()也做成固定值，qps可以做到1300w
 ```
 
 ### match-prefix
