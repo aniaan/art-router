@@ -666,6 +666,69 @@ func TestTreeRegexpRecursive(t *testing.T) {
 	}
 }
 
+func TestTreeRegexMatchWholeParam(t *testing.T) {
+	hStub1 := "hStub1"
+	hStub2 := "hStub1"
+	hStub3 := "hStub1"
+
+	rules := []*Rule{
+		{
+			Paths: []*Path{
+				{
+					Path:    "/{id:[0-9]+}",
+					Methods: []string{"GET"},
+					Backend: hStub1,
+				},
+
+				{
+					Path:    "/{x:.+}/foo",
+					Methods: []string{"GET"},
+					Backend: hStub2,
+				},
+				{
+					Path:    "/{param:[0-9]*}/test",
+					Methods: []string{"GET"},
+					Backend: hStub3,
+				},
+			},
+		},
+	}
+
+	tests := []struct {
+		expectedHandler string
+		url             string
+	}{
+		{url: "/13", expectedHandler: hStub1},
+		{url: "/a13", expectedHandler: ""},
+		{url: "/13.jpg", expectedHandler: ""},
+		{url: "/a13.jpg", expectedHandler: ""},
+		{url: "/a/foo", expectedHandler: hStub2},
+		{url: "//foo", expectedHandler: ""},
+		{url: "//test", expectedHandler: ""},
+	}
+
+	router := New(rules)
+	assert := assert.New(t)
+
+	for _, tt := range tests {
+		req, _ := http.NewRequest(http.MethodGet, tt.url, nil)
+		// fmt.Println(i)
+		context := router.Search(req)
+
+		var backend string
+
+		if context.route != nil {
+			backend = context.route.backend
+		}
+
+		assert.Equal(tt.expectedHandler, backend)
+
+	}
+
+}
+
+
+
 func BenchmarkTreeGet(b *testing.B) {
 	h1 := "h1"
 	h2 := "h2"
