@@ -1,7 +1,6 @@
 package artrouter
 
 import (
-	"fmt"
 	"net/http"
 	"testing"
 
@@ -228,27 +227,27 @@ func TestTree(t *testing.T) {
 		k []string // output param keys
 		v []string // output param values
 	}{
-		{r: "/", h: hIndex, k: []string{}, v: []string{}},
-		{r: "/favicon.ico", h: hFavicon, k: []string{}, v: []string{}},
+		{r: "/", h: hIndex, k: nil, v: nil},
+		{r: "/favicon.ico", h: hFavicon, k: nil, v: nil},
 
-		{r: "/pages", h: "", k: []string{}, v: []string{}},
+		{r: "/pages", h: "", k: nil, v: nil},
 		{r: "/pages/", h: hStub, k: []string{"*"}, v: []string{""}},
 		{r: "/pages/yes", h: hStub, k: []string{"*"}, v: []string{"yes"}},
 
-		{r: "/article", h: hArticleList, k: []string{}, v: []string{}},
-		{r: "/article/", h: hArticleList, k: []string{}, v: []string{}},
-		{r: "/article/near", h: hArticleNear, k: []string{}, v: []string{}},
+		{r: "/article", h: hArticleList, k: nil, v: nil},
+		{r: "/article/", h: hArticleList, k: nil, v: nil},
+		{r: "/article/near", h: hArticleNear, k: nil, v: nil},
 		{r: "/article/neard", h: hStub, k: []string{"id"}, v: []string{"neard"}},
 		{r: "/article/123", h: hStub, k: []string{"id"}, v: []string{"123"}},
-		{r: "/article/123/456", h: hArticleShowOpts, k: []string{"id", "opts"}, v: []string{"123", "456"}},
+		{r: "/article/123/456", h: hArticleShowOpts, k: []string{"sup", "opts"}, v: []string{"123", "456"}},
 		{r: "/article/@peter", h: hArticleByUser, k: []string{"user"}, v: []string{"peter"}},
 		{r: "/article/22//related", h: hArticleShowRelated, k: []string{"id"}, v: []string{"22"}},
 		{r: "/article/111/edit", h: hStub, k: []string{"iffd"}, v: []string{"111"}},
 		{r: "/article/slug/sept/-/4/2015", h: hArticleSlug, k: []string{"month", "day", "year"}, v: []string{"sept", "4", "2015"}},
 		{r: "/article/:id", h: hStub, k: []string{"id"}, v: []string{":id"}},
 
-		{r: "/admin/user", h: hUserList, k: []string{}, v: []string{}},
-		{r: "/admin/user/", h: hStub, k: []string{}, v: []string{}},
+		{r: "/admin/user", h: hUserList, k: nil, v: nil},
+		{r: "/admin/user/", h: hStub, k: nil, v: nil},
 		{r: "/admin/user/1", h: hUserShow, k: []string{"id"}, v: []string{"1"}},
 		{r: "/admin/user//1", h: hUserShow, k: []string{"id"}, v: []string{"1"}},
 		{r: "/admin/hi", h: hStub, k: []string{"*"}, v: []string{"hi"}},
@@ -274,10 +273,9 @@ func TestTree(t *testing.T) {
 	router := New(rules)
 	assert := assert.New(t)
 
-	for i, tt := range tests {
-		// rctx := NewRouteContext()
+	for _, tt := range tests {
 		req, _ := http.NewRequest(http.MethodGet, tt.r, nil)
-		fmt.Println(i)
+		//fmt.Println(i)
 		context := router.Search(req)
 
 		var backend string
@@ -288,17 +286,10 @@ func TestTree(t *testing.T) {
 
 		assert.Equal(tt.h, backend)
 
-		// paramKeys := rctx.routeParams.Keys
-		// paramValues := rctx.routeParams.Values
+		paramKeys := context.routeParams.Keys
+		paramValues := context.routeParams.Values
 
-		// if fmt.Sprintf("%v", tt.h) != fmt.Sprintf("%v", handler) {
-		// t.Errorf("input [%d]: find '%s' expecting handler:%v , got:%v", i, tt.r, tt.h, handler)
-		// }
-		// if !stringSliceEqual(tt.k, paramKeys) {
-		// 	t.Errorf("input [%d]: find '%s' expecting paramKeys:(%d)%v , got:(%d)%v", i, tt.r, len(tt.k), tt.k, len(paramKeys), paramKeys)
-		// }
-		// if !stringSliceEqual(tt.v, paramValues) {
-		// 	t.Errorf("input [%d]: find '%s' expecting paramValues:(%d)%v , got:(%d)%v", i, tt.r, len(tt.v), tt.v, len(paramValues), paramValues)
-		// }
+		assert.Equal(tt.k, paramKeys)
+		assert.Equal(tt.v, paramValues)
 	}
 }

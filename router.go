@@ -246,9 +246,9 @@ func (n *node) addChild(child *node, prefix string) *node {
 			search = search[ps:]
 
 			nn := &node{
-				typ:   segType,
-				label: search[0],
-				tail:  seg.tail,
+				typ:    segType,
+				label:  search[0],
+				tail:   seg.tail,
 				prefix: search,
 			}
 			hn = child.addChild(nn, search)
@@ -443,12 +443,14 @@ func (n *node) find(path string, context *context) *route {
 				if xn.isLeaf() {
 					r := xn.match(context)
 					if r != nil {
+						// context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
 						return r
 					}
 				}
 			}
 			fin := xn.find(xsearch, context)
 			if fin != nil {
+				// context.routeParams.Keys = append(context.routeParams.Keys, fin.paramKeys...)
 				return fin
 			}
 
@@ -481,13 +483,14 @@ func (n *node) find(path string, context *context) *route {
 				if xn.isLeaf() {
 					r := xn.match(context)
 					if r != nil {
-						context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
+						// context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
 						return r
 					}
 				}
 			}
 			fin := xn.find(xsearch, context)
 			if fin != nil {
+				// context.routeParams.Keys = append(context.routeParams.Keys, fin.paramKeys...)
 				return fin
 			}
 
@@ -526,13 +529,14 @@ func (n *node) find(path string, context *context) *route {
 					if xn.isLeaf() {
 						r := xn.match(context)
 						if r != nil {
-							context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
+							// context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
 							return r
 						}
 					}
 				}
 				fin := xn.find(xsearch, context)
 				if fin != nil {
+					// context.routeParams.Keys = append(context.routeParams.Keys, fin.paramKeys...)
 					return fin
 				}
 				context.routeParams.Values = context.routeParams.Values[:prevlen]
@@ -543,6 +547,8 @@ func (n *node) find(path string, context *context) *route {
 			xn = nds[0]
 			r := xn.match(context)
 			if r != nil {
+				context.routeParams.Values = append(context.routeParams.Values, xsearch)
+				// context.routeParams.Keys = append(context.routeParams.Keys, r.paramKeys...)
 				return r
 			}
 		}
@@ -705,6 +711,7 @@ func (ar *ArtRouter) Search(req *http.Request) *context {
 
 		if route != nil {
 			context.route = route
+			context.routeParams.Keys = append(context.routeParams.Keys, route.paramKeys...)
 			return context
 		}
 	}
