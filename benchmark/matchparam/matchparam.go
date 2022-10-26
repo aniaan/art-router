@@ -19,7 +19,7 @@ func main() {
 	paths := []*router.Path{}
 
 	for i := 1; i <= route_count; i++ {
-		path := "/" + GetMD5Hash(strconv.FormatInt(int64(i), 10))
+		path := "/user" + strconv.FormatInt(int64(i), 10)+ "/{name}"
 		paths = append(paths,
 			&router.Path{
 				Path:    path,
@@ -46,7 +46,7 @@ func main() {
 
 	start := time.Now()
 
-	path := "/" + GetMD5Hash(strconv.FormatInt(int64(500), 10))
+	path := "/user1/gordon"
 
 	req, _ := http.NewRequest(http.MethodGet, path, nil)
 

@@ -264,7 +264,7 @@ func TestTree(t *testing.T) {
 		{r: "/users/123/okay/yes", h: hUserAll, k: []string{"*"}, v: []string{"123/okay/yes"}},
 	}
 
-	router := New(rules)
+	router := New(rules, false)
 	assert := assert.New(t)
 
 	for _, tt := range tests {
@@ -474,7 +474,7 @@ func TestTreeMoar(t *testing.T) {
 	// log.Println("~~~~~~~~~")
 	// log.Println("~~~~~~~~~")
 
-	router := New(rules)
+	router := New(rules, false)
 	assert := assert.New(t)
 
 	for _, tt := range tests {
@@ -578,7 +578,7 @@ func TestTreeRegexp(t *testing.T) {
 		{r: "/articles/1122-yes", h: hStub6, k: []string{"id", "aux"}, v: []string{"1122", "yes"}},
 	}
 
-	router := New(rules)
+	router := New(rules, false)
 	assert := assert.New(t)
 
 	for _, tt := range tests {
@@ -636,7 +636,7 @@ func TestTreeRegexpRecursive(t *testing.T) {
 		{r: "/one/hi/123/second", h: hStub2, k: []string{"firstId", "secondId"}, v: []string{"hi", "123"}},
 	}
 
-	router := New(rules)
+	router := New(rules, false)
 	assert := assert.New(t)
 
 	for _, tt := range tests {
@@ -701,7 +701,7 @@ func TestTreeRegexMatchWholeParam(t *testing.T) {
 		{url: "//test", expectedHandler: ""},
 	}
 
-	router := New(rules)
+	router := New(rules, false)
 	assert := assert.New(t)
 
 	for _, tt := range tests {
@@ -778,7 +778,7 @@ func BenchmarkTreeGet(b *testing.B) {
 		},
 	}
 
-	router := New(rules)
+	router := New(rules, false)
 
 	b.ReportAllocs()
 	b.ResetTimer()

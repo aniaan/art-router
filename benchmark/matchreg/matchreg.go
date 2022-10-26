@@ -12,14 +12,14 @@ import (
 )
 
 func main() {
-	route_count := 1000 * 100
-	match_times := 1000 * 1000 * 10
-	// match_times := 1
+	route_count := 1000
+	match_times := 1000 * 1000
+	//match_times := 1
 
 	paths := []*router.Path{}
 
 	for i := 1; i <= route_count; i++ {
-		path := "/" + GetMD5Hash(strconv.FormatInt(int64(i), 10))
+		path := "/user" + "/{name:^[a-z]+}/" + strconv.FormatInt(int64(i), 10)
 		paths = append(paths,
 			&router.Path{
 				Path:    path,
@@ -43,10 +43,9 @@ func main() {
 	// f, _ := os.Create(cpuProfile)
 	// pprof.StartCPUProfile(f)
 	// defer pprof.StopCPUProfile()
-
 	start := time.Now()
 
-	path := "/" + GetMD5Hash(strconv.FormatInt(int64(500), 10))
+	path := "/user/bea/1"
 
 	req, _ := http.NewRequest(http.MethodGet, path, nil)
 

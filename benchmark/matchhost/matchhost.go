@@ -34,7 +34,7 @@ func main() {
 		})
 	}
 
-	r := router.New(rules)
+	r := router.New(rules, false)
 
 	start := time.Now()
 	host := GetMD5Hash(strconv.FormatInt(int64(500), 10)) + ".abc.com"

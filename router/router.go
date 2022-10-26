@@ -29,6 +29,8 @@ type (
 		matchAllHeader bool
 	}
 
+	Routes []*Route
+
 	// Represents node and edge in radix tree
 	node struct {
 		// regexp matcher for regexp nodes
@@ -56,11 +58,15 @@ type (
 
 	nodes []*node
 
+	PathCache map[string]Routes
+
 	muxRule struct {
-		hostRE     *regexp.Regexp
-		root       *node
-		host       string
-		hostRegexp string
+		hostRE           *regexp.Regexp
+		root             *node
+		pathCache        PathCache
+		host             string
+		hostRegexp       string
+		disablePathCache bool
 	}
 
 	ArtRouter struct {
@@ -281,34 +287,7 @@ func (n *node) setRoute(path *Path) {
 		n.routes = make([]*Route, 0)
 	}
 
-	paramKeys := patParamKeys(path.Path)
-
-	method := mALL
-	if len(path.Methods) != 0 {
-		method = 0
-		for _, m := range path.Methods {
-			method |= methodMap[m]
-		}
-	}
-
-	for _, p := range path.Headers {
-		p.initHeaderRoute()
-	}
-
-	for _, q := range path.Queries {
-		q.initQueryRoute()
-	}
-
-	r := &Route{
-		pattern:        path.Path,
-		backend:        path.Backend,
-		headers:        path.Headers,
-		queries:        path.Queries,
-		matchAllHeader: path.MatchAllHeader,
-		paramKeys:      paramKeys,
-		method:         method,
-	}
-
+	r := newRoute(path)
 	n.routes = append(n.routes, r)
 }
 
@@ -585,7 +564,48 @@ func (r *Route) matchQueries(query url.Values) bool {
 	return true
 }
 
-func newMuxRule(rule *Rule) *muxRule {
+func newRoute(path *Path) *Route {
+	paramKeys := patParamKeys(path.Path)
+
+	method := mALL
+	if len(path.Methods) != 0 {
+		method = 0
+		for _, m := range path.Methods {
+			method |= methodMap[m]
+		}
+	}
+
+	for _, p := range path.Headers {
+		p.initHeaderRoute()
+	}
+
+	for _, q := range path.Queries {
+		q.initQueryRoute()
+	}
+
+	r := &Route{
+		pattern:        path.Path,
+		backend:        path.Backend,
+		headers:        path.Headers,
+		queries:        path.Queries,
+		matchAllHeader: path.MatchAllHeader,
+		paramKeys:      paramKeys,
+		method:         method,
+	}
+
+	return r
+}
+
+func (pc PathCache) addPath(path *Path) {
+	p := path.Path
+	if _, ok := pc[p]; ok {
+		pc[p] = append(pc[p], newRoute(path))
+	} else {
+		pc[p] = []*Route{newRoute(path)}
+	}
+}
+
+func newMuxRule(rule *Rule, disablePathCache bool) *muxRule {
 	var hostRE *regexp.Regexp
 
 	if rule.HostRegexp != "" {
@@ -597,20 +617,30 @@ func newMuxRule(rule *Rule) *muxRule {
 		}
 	}
 
-	root := &node{}
+	mr := &muxRule{
+		host:             rule.Host,
+		hostRegexp:       rule.HostRegexp,
+		hostRE:           hostRE,
+		root:             &node{},
+		disablePathCache: disablePathCache,
+		pathCache:        make(PathCache),
+	}
+
 	for _, path := range rule.Paths {
-		_, err := root.insert(path)
-		if err != nil {
-			panic(err)
+
+		seg := patNextSegment(path.Path)
+
+		if !disablePathCache && seg.nodeType == ntStatic {
+			mr.pathCache.addPath(path)
+		} else {
+			_, err := mr.root.insert(path)
+			if err != nil {
+				panic(err)
+			}
 		}
 	}
 
-	return &muxRule{
-		host:       rule.Host,
-		hostRegexp: rule.HostRegexp,
-		hostRE:     hostRE,
-		root:       root,
-	}
+	return mr
 }
 
 func (mr *muxRule) match(host string) bool {
@@ -628,13 +658,13 @@ func (mr *muxRule) match(host string) bool {
 	return false
 }
 
-func New(rules []*Rule) ArtRouter {
+func New(rules []*Rule, disablePathCache bool) ArtRouter {
 	router := ArtRouter{
 		rules: make([]*muxRule, 0),
 	}
 
 	for _, rule := range rules {
-		mr := newMuxRule(rule)
+		mr := newMuxRule(rule, disablePathCache)
 		router.rules = append(router.rules, mr)
 
 	}
@@ -662,6 +692,16 @@ func (ar *ArtRouter) Search(req *http.Request) *Context {
 		if !rule.match(host) {
 			continue
 		}
+		// fmt.Println(len(rule.pathCache))
+		if routes, ok := rule.pathCache[path]; ok {
+			for _, route := range routes {
+				if route.match(context) {
+					context.Route = route
+					return context
+				}
+			}
+		}
+
 		route := rule.root.find(path, context)
 
 		if route != nil {
