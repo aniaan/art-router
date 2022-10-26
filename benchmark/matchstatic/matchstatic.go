@@ -5,6 +5,8 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
+	"runtime/pprof"
 	"strconv"
 	"time"
 
@@ -36,9 +38,14 @@ func main() {
 
 	r := router.New(rules)
 
+	cpuProfile := "cpu.pprof"
+	// 采样cpu运行状态
+
+	f, _ := os.Create(cpuProfile)
+	pprof.StartCPUProfile(f)
+	defer pprof.StopCPUProfile()
+
 	start := time.Now()
-
-
 
 	path := "/" + GetMD5Hash(strconv.FormatInt(int64(500), 10))
 
