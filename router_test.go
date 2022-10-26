@@ -1,6 +1,7 @@
 package artrouter
 
 import (
+	"fmt"
 	"net/http"
 	"testing"
 
@@ -221,6 +222,8 @@ func TestTree(t *testing.T) {
 		},
 	}
 
+
+
 	tests := []struct {
 		r string   // input request path
 		h string   // output matched handler
@@ -263,12 +266,6 @@ func TestTree(t *testing.T) {
 		{r: "/users/super/123/okay/yes", h: hUserSuper, k: []string{"*"}, v: []string{"123/okay/yes"}},
 		{r: "/users/123/okay/yes", h: hUserAll, k: []string{"*"}, v: []string{"123/okay/yes"}},
 	}
-
-	// log.Println("~~~~~~~~~")
-	// log.Println("~~~~~~~~~")
-	// debugPrintTree(0, 0, tr, 0)
-	// log.Println("~~~~~~~~~")
-	// log.Println("~~~~~~~~~")
 
 	router := New(rules)
 	assert := assert.New(t)
@@ -796,4 +793,33 @@ func BenchmarkTreeGet(b *testing.B) {
 		req, _ := http.NewRequest(http.MethodGet, "/ping/123/456", nil)
 		router.Search(req)
 	}
+}
+
+
+func debugPrintTree(parent int, i int, n *node, label byte) bool {
+	numEdges := 0
+	for _, nds := range n.children {
+		numEdges += len(nds)
+	}
+
+	// if n.handlers != nil {
+	// 	log.Printf("[node %d parent:%d] typ:%d prefix:%s label:%s tail:%s numEdges:%d isLeaf:%v handler:%v pat:%s keys:%v\n", i, parent, n.typ, n.prefix, string(label), string(n.tail), numEdges, n.isLeaf(), n.handlers, n.pattern, n.paramKeys)
+	// } else {
+	// 	log.Printf("[node %d parent:%d] typ:%d prefix:%s label:%s tail:%s numEdges:%d isLeaf:%v pat:%s keys:%v\n", i, parent, n.typ, n.prefix, string(label), string(n.tail), numEdges, n.isLeaf(), n.pattern, n.paramKeys)
+	// }
+	if n.routes != nil {
+		fmt.Printf("[node %d parent:%d] typ:%d prefix:%s label:%s tail:%s numEdges:%d isLeaf:%v handler:%v\n", i, parent, n.typ, n.prefix, string(label), string(n.tail), numEdges, n.isLeaf(), n.routes)
+	} else {
+		fmt.Printf("[node %d parent:%d] typ:%d prefix:%s label:%s tail:%s numEdges:%d isLeaf:%v\n", i, parent, n.typ, n.prefix, string(label), string(n.tail), numEdges, n.isLeaf())
+	}
+	parent = i
+	for _, nds := range n.children {
+		for _, e := range nds {
+			i++
+			if debugPrintTree(parent, i, e, e.label) {
+				return true
+			}
+		}
+	}
+	return false
 }
