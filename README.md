@@ -17,6 +17,7 @@ QPS        : 385801.564169
 
 ### match-static
 
+>> 做了懒加载, benchmark已经上去了，稍后补充
 >> 相比lua-resty-radixtree的性能，主要耗时在net.splitHost和url.Query()上，lua-resty-radixtree的benchmark参数host和query是提前预置好的，所以qps会高,如果把net.splitHost和url.Query()也做成固定值，qps可以做到1300w
 
 ```shell
