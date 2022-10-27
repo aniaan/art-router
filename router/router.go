@@ -231,7 +231,9 @@ func (n *node) addChild(child *node, prefix string) *node {
 				// going to be a static node next.
 
 				// prefix require update?
-				child.prefix = search[:pe]
+				if segType != ntRegexp {
+					child.prefix = search[:pe]
+				}
 
 				search = search[pe:] // advance search position
 
