@@ -7,9 +7,14 @@ import (
 
 func main() {
 	count := 1000 * 1000 * 100
-	var c byte = byte(200)
-	h(count, c)
-	b(count, c)
+
+	for i := 1; i <= 256; i++ {
+		fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+		var c byte = byte(i)
+		h(count, c)
+		b(count, c)
+		fmt.Println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+	}
 }
 
 func h(count int, c byte) {

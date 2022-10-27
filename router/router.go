@@ -692,12 +692,14 @@ func (ar *ArtRouter) Search(req *http.Request) *Context {
 		if !rule.match(host) {
 			continue
 		}
-		// fmt.Println(len(rule.pathCache))
-		if routes, ok := rule.pathCache[path]; ok {
-			for _, route := range routes {
-				if route.match(context) {
-					context.Route = route
-					return context
+
+		if !rule.disablePathCache {
+			if routes, ok := rule.pathCache[path]; ok {
+				for _, route := range routes {
+					if route.match(context) {
+						context.Route = route
+						return context
+					}
 				}
 			}
 		}
