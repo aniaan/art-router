@@ -84,10 +84,10 @@ type (
 		headers     http.Header
 		queries     url.Values
 		Route       *Route
+		request     *http.Request
 		path        string
 		routeParams routeParams
 		method      methodType
-		request     *http.Request
 	}
 )
 
