@@ -3,6 +3,8 @@ package router
 import (
 	"fmt"
 	"net"
+
+	// "net"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -85,6 +87,7 @@ type (
 		path        string
 		routeParams routeParams
 		method      methodType
+		request     *http.Request
 	}
 )
 
@@ -502,11 +505,11 @@ func (r *Route) match(context *Context) bool {
 		return false
 	}
 
-	if len(r.headers) > 0 && !r.matchHeaders(context.headers) {
+	if len(r.headers) > 0 && !r.matchHeaders(context.GetHeaders()) {
 		return false
 	}
 
-	if len(r.queries) > 0 && !r.matchQueries(context.queries) {
+	if len(r.queries) > 0 && !r.matchQueries(context.GetQueries()) {
 		return false
 	}
 
@@ -658,6 +661,35 @@ func (mr *muxRule) match(host string) bool {
 	return false
 }
 
+func newContext(req *http.Request) *Context {
+	method := methodMap[req.Method]
+	path := req.URL.Path
+
+	context := &Context{
+		request: req,
+		method:  method,
+		path:    path,
+	}
+
+	return context
+}
+
+func (c *Context) GetHeaders() http.Header {
+	if c.headers != nil {
+		return c.headers
+	}
+	c.headers = c.request.Header
+	return c.headers
+}
+
+func (c *Context) GetQueries() url.Values {
+	if c.queries != nil {
+		return c.queries
+	}
+	c.queries = c.request.URL.Query()
+	return c.queries
+}
+
 func New(rules []*Rule, disablePathCache bool) ArtRouter {
 	router := ArtRouter{
 		rules: make([]*muxRule, 0),
@@ -677,16 +709,10 @@ func (ar *ArtRouter) Search(req *http.Request) *Context {
 	if h, _, err := net.SplitHostPort(host); err == nil {
 		host = h
 	}
-	method := methodMap[req.Method]
-	// path := normalizePath(req.URL.Path)
+
 	path := req.URL.Path
 
-	context := &Context{
-		method:  method,
-		path:    path,
-		headers: req.Header,
-		queries: req.URL.Query(),
-	}
+	context := newContext(req)
 
 	for _, rule := range ar.rules {
 		if !rule.match(host) {

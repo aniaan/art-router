@@ -8,13 +8,16 @@ import (
 func main() {
 	count := 1000 * 1000 * 100
 
-	for i := 1; i <= 256; i++ {
-		fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
-		var c byte = byte(i)
-		h(count, c)
-		b(count, c)
-		fmt.Println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
-	}
+	// for i := 1; i <= 256; i++ {
+	// 	fmt.Println(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>")
+	// 	var c byte = byte(i)
+	// 	h(count, c)
+	// 	b(count, c)
+	// 	fmt.Println("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<")
+	// }
+
+	st1("/tianji/exchange/popup/task/abc", "/tianji/exchange/popup/task/abc", count)
+	st2("/tianji/exchange/popup/task/abc", "/tianji/exchange/popup/task/abc", count)
 }
 
 func h(count int, c byte) {
@@ -74,4 +77,40 @@ func b(count int, c byte) {
 
 	duration := time.Since(start).Seconds()
 	fmt.Printf("bin search matched res: %d time used %f sec\n", r, duration)
+}
+
+func st1(s1, s2 string, count int) {
+	start := time.Now()
+	var res bool
+	for a := 0; a < count; a++ {
+		res = s1 == s2
+	}
+
+	duration := time.Since(start).Seconds()
+	fmt.Printf("hash search matched res: %t time used %f sec\n", res, duration)
+}
+
+func st2(s1, s2 string, count int) {
+	start := time.Now()
+	var res bool
+	for a := 0; a < count; a++ {
+		res = se(s1, s2)
+	}
+
+	duration := time.Since(start).Seconds()
+	fmt.Printf("hash search matched res: %t time used %f sec\n", res, duration)
+}
+
+func se(s1, s2 string) bool {
+	if len(s1) != len(s2) {
+		return false
+	}
+
+	for i := 0; i < len(s1); i++ {
+		if s1[i] != s2[i] {
+			return false
+		}
+	}
+
+	return true
 }
